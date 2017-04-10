@@ -1,5 +1,7 @@
 # LevelDB storage plugin for Fluent
 
+[![Build Status](https://travis-ci.org/cosmo0920/fluent-plugin-storage-leveldb.svg?branch=master)](https://travis-ci.org/cosmo0920/fluent-plugin-storage-leveldb)
+
 fluent-plugin-storage-leveldb is a fluent plugin to store plugin state into LevelDB.
 
 ## Installation
