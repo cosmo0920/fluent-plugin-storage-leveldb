@@ -7,7 +7,7 @@ module Fluent
       Fluent::Plugin.register_storage('leveldb', self)
 
       config_param :path, :string, default: nil
-      config_param :key, :string, default: "leveldb"
+      config_param :root_key, :string, default: "leveldb"
       # Set persistent true by default
       config_set_default :persistent, true
 
@@ -27,7 +27,7 @@ module Fluent
         end
 
         @leveldb = LevelDB::DB.new(@path)
-        object = @leveldb.get(@key)
+        object = @leveldb.get(@root_key)
         if object
           begin
             data = Yajl::Parser.parse(object)
@@ -49,7 +49,7 @@ module Fluent
 
       def load
         begin
-          json_string = @leveldb.get(@key)
+          json_string = @leveldb.get(@root_key)
           json = Yajl::Parser.parse(json_string)
           unless json.is_a?(Hash)
             log.error "broken content for plugin storage (Hash required: ignored)", type: json.class
@@ -66,7 +66,7 @@ module Fluent
         begin
           json_string = Yajl::Encoder.encode(@store)
           @leveldb.batch do
-            @leveldb.put(@key, json_string)
+            @leveldb.put(@root_key, json_string)
           end
         rescue => e
           log.error "failed to save data for plugin storage to leveldb", path: @path, error: e
