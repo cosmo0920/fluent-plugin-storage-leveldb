@@ -18,7 +18,6 @@ class RedisStorageTest < Test::Unit::TestCase
 
   def setup_leveldb
     @store = {}
-    @path = File.join(TMP_DIR, 'mystore')
   end
 
   def teardown_leveldb
@@ -55,14 +54,15 @@ class RedisStorageTest < Test::Unit::TestCase
 
   sub_test_case 'configured with path key' do
     test 'works as storage which stores data into redis' do
-      storage_path = @path
+      storage_path = TMP_DIR
+      expected_storage_path = File.join(TMP_DIR, 'worker0', 'storage.db')
       conf = config_element('ROOT', '', {}, [config_element('storage', '', {'path' => storage_path})])
       @d.configure(conf)
       @d.start
       @p = @d.storage_create()
       assert_true(@p.persistent)
 
-      assert_equal storage_path, @p.path
+      assert_equal expected_storage_path, @p.path
       assert @p.store.empty?
 
       assert_nil @p.get('key1')
@@ -90,6 +90,58 @@ class RedisStorageTest < Test::Unit::TestCase
       # re-create to reload storage contents
       @d = MyInput.new
       @d.configure(conf)
+      @d.start
+      @p = @d.storage_create()
+
+      assert_false @p.store.empty?
+
+      assert_equal '2', @p.get('key1')
+      assert_equal 4, @p.get('key2')
+    end
+  end
+
+  sub_test_case 'configured with root-dir and plugin id' do
+    test 'works as storage which stores data under root dir' do
+      root_dir = File.join(TMP_DIR, 'root')
+      expected_storage_path = File.join(root_dir, 'worker0', 'local_storage_test', 'storage.db')
+      conf = config_element('ROOT', '', {'@id' => 'local_storage_test'})
+      Fluent::SystemConfig.overwrite_system_config('root_dir' => root_dir) do
+        @d.configure(conf)
+      end
+      @d.start
+      @p = @d.storage_create()
+
+      assert_equal expected_storage_path, @p.path
+      assert @p.store.empty?
+
+      assert_nil @p.get('key1')
+      assert_equal 'EMPTY', @p.fetch('key1', 'EMPTY')
+
+      @p.put('key1', '1')
+      assert_equal '1', @p.get('key1')
+
+      @p.update('key1') do |v|
+        (v.to_i * 2).to_s
+      end
+      assert_equal '2', @p.get('key1')
+
+      @p.save # stores all data into file
+
+      assert File.exist?(expected_storage_path)
+      assert File.directory?(expected_storage_path)
+
+      @p.put('key2', 4)
+
+      @d.stop; @d.before_shutdown; @d.shutdown; @d.after_shutdown; @d.close; @d.terminate
+
+      assert_equal({'key1' => '2', 'key2' => 4}, @p.load)
+      @p.leveldb.close # Remove DB ownership
+
+      # re-create to reload storage contents
+      @d = MyInput.new
+      Fluent::SystemConfig.overwrite_system_config('root_dir' => root_dir) do
+        @d.configure(conf)
+      end
       @d.start
       @p = @d.storage_create()
 

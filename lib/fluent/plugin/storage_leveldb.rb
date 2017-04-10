@@ -6,7 +6,12 @@ module Fluent
     class LevelDBStorage < Storage
       Fluent::Plugin.register_storage('leveldb', self)
 
+      DEFAULT_DIR_MODE = 0755
+
       config_param :path, :string, default: nil
+      config_param :dir_mode, default: DEFAULT_DIR_MODE do |v|
+        v.to_i(8)
+      end
       config_param :root_key, :string, default: "leveldb"
       # Set persistent true by default
       config_set_default :persistent, true
@@ -22,8 +27,27 @@ module Fluent
       def configure(conf)
         super
 
-        unless @path
+        if @path
+          if File.exist?(@path) && File.file?(@path)
+            raise Fluent::ConfigError, "path for <storage> should be a directory."
+          elsif File.exist?(@path) && File.directory?(@path)
+            @path = File.join(@path, "worker#{fluentd_worker_id}", "storage.db")
+            @multi_workers_available = true
+          end
+        elsif root_dir = owner.plugin_root_dir
+          basename = (conf.arg && !conf.arg.empty?) ? "storage.#{conf.arg}.db" : "storage.db"
+          @path = File.join(root_dir, basename)
+          @multi_workers_available = true
+        else
           raise Fluent::ConfigError, "path for <storage> is required."
+        end
+
+        dir = File.dirname(@path)
+        FileUtils.mkdir_p(dir, mode: @dir_mode) unless Dir.exist?(dir)
+        if File.exist?(@path)
+          raise Fluent::ConfigError, "Plugin storage path '#{@path}' is not readable/writable" unless File.readable?(@path) && File.writable?(@path)
+        else
+          raise Fluent::ConfigError, "Directory is not writable for plugin storage file '#{@path}'" unless File.stat(dir).writable?
         end
 
         @leveldb = LevelDB::DB.new(@path)
@@ -40,7 +64,7 @@ module Fluent
       end
 
       def multi_workers_ready?
-        true
+        @multi_workers_available
       end
 
       def persistent_always?
