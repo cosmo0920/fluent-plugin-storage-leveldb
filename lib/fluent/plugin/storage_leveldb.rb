@@ -67,10 +67,6 @@ module Fluent
         @multi_workers_available
       end
 
-      def persistent_always?
-        true
-      end
-
       def load
         begin
           json_string = @leveldb.get(@root_key)
